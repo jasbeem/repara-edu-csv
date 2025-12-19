@@ -1,0 +1,5 @@
+{
+  "name": "Repara - Edu-CSV Repair Tool",
+  "description": "A sophisticated tool for educational content creators to repair, edit, and export quiz CSV files with automated special character escaping and a dark-mode CRUD interface.",
+  "requestFramePermissions": []
+}

@@ -1,0 +1,384 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repara - Edu-CSV</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons Bundle -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #020617; /* slate-950 */
+            color: #f8fafc;
+            margin: 0;
+            overflow-x: hidden;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 10px;
+        }
+        .animate-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #file-upload { display: none; }
+        
+        /* Glassmorphism effects */
+        .glass {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+    </style>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useRef, useEffect } = React;
+
+        // --- UTILS ---
+        const generateId = () => {
+            return (typeof crypto !== 'undefined' && crypto.randomUUID) 
+                ? crypto.randomUUID() 
+                : Math.random().toString(36).substring(2, 15);
+        };
+
+        const repairText = (text) => {
+            if (!text) return '';
+            // Escapes *, _, +, >, and # with a backslash if not already escaped.
+            return text.replace(/(\\)?([*_+#>])/g, (match, backslash, char) => {
+                return backslash ? match : `\\${char}`;
+            });
+        };
+
+        const parseCSV = (csvContent) => {
+            const lines = csvContent.split(/\r?\n/).filter(line => line.trim().length > 0);
+            if (lines.length < 2) return [];
+            
+            if (lines[0].charCodeAt(0) === 0xFEFF) {
+                lines[0] = lines[0].substring(1);
+            }
+
+            return lines.slice(1).map(line => {
+                const parts = line.split(';').map(p => p.trim());
+                return {
+                    id: generateId(),
+                    tipo: parts[0] || 'quiz',
+                    pregunta: repairText(parts[1] || ''),
+                    r1: repairText(parts[2] || ''),
+                    r2: repairText(parts[3] || ''),
+                    r3: repairText(parts[4] || ''),
+                    r4: repairText(parts[5] || ''),
+                    tiempo: parts[6] || '30',
+                    correcta: parts[7] || '1',
+                    urlImagen: parts[8] || '',
+                };
+            });
+        };
+
+        const exportToCSV = (questions) => {
+            const header = "Tipo;Pregunta;R1;R2;R3;R4;Tiempo;Correcta;URL Imagen";
+            const rows = questions.map(q => [
+                q.tipo, q.pregunta, q.r1, q.r2, q.r3, q.r4, q.tiempo, q.correcta, q.urlImagen
+            ].join(';'));
+            return [header, ...rows].join('\n');
+        };
+
+        const downloadCSV = (content, filename) => {
+            const blob = new Blob(["\ufeff" + content], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        // --- COMPONENTS ---
+
+        // Fixed Icon component for Lucide UMD compatibility
+        const Icon = ({ name, size = 18, className = "" }) => {
+            const ref = useRef(null);
+
+            useEffect(() => {
+                if (ref.current && window.lucide) {
+                    // Normalize name to kebab-case for data-lucide attribute
+                    const kebabName = name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+                    
+                    // Create internal icon element
+                    ref.current.innerHTML = `<i data-lucide="${kebabName}"></i>`;
+                    
+                    window.lucide.createIcons({
+                        root: ref.current,
+                        attrs: {
+                            width: size,
+                            height: size,
+                            class: className,
+                            'stroke-width': 2
+                        }
+                    });
+                }
+            }, [name, size, className]);
+
+            return <span ref={ref} className="inline-flex items-center justify-center"></span>;
+        };
+
+        const QuestionCard = ({ question, onEdit, onDelete }) => {
+            const answers = [question.r1, question.r2, question.r3, question.r4];
+            const correctAnswerIndex = parseInt(question.correcta) - 1;
+
+            return (
+                <div className="group bg-slate-900/40 border border-slate-800 hover:border-cyan-500/50 rounded-3xl p-6 transition-all duration-300 shadow-xl hover:shadow-cyan-900/10 animate-in">
+                    <div className="flex justify-between items-start gap-4 mb-4">
+                        <div className="flex-1">
+                            <span className="inline-block px-3 py-1 rounded-full text-[10px] font-bold bg-blue-600/20 text-blue-400 border border-blue-600/30 mb-3 uppercase tracking-wider">
+                                {question.tipo}
+                            </span>
+                            <h3 className="text-xl font-bold text-slate-100 leading-tight">
+                                {question.pregunta}
+                            </h3>
+                        </div>
+                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => onEdit(question)} className="p-2.5 rounded-xl bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white transition-colors">
+                                <Icon name="Edit2" size={16} />
+                            </button>
+                            <button onClick={() => onDelete(question.id)} className="p-2.5 rounded-xl bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white transition-colors">
+                                <Icon name="Trash2" size={16} />
+                            </button>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                        {answers.map((ans, idx) => (
+                            <div key={idx} className={`p-3 rounded-2xl border text-sm flex items-center gap-2 transition-all ${idx === correctAnswerIndex ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
+                                <span className={`w-6 h-6 flex items-center justify-center rounded-lg text-xs font-bold shrink-0 ${idx === correctAnswerIndex ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>{idx + 1}</span>
+                                <span className="truncate">{ans}</span>
+                                {idx === correctAnswerIndex && <Icon name="CheckCircle2" size={14} className="ml-auto text-cyan-400" />}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex items-center gap-6 text-xs text-slate-500 border-t border-slate-800/50 pt-4">
+                        <div className="flex items-center gap-2"><Icon name="Clock" size={14} className="text-blue-500" /><span>{question.tiempo}s</span></div>
+                        {question.urlImagen && <div className="flex items-center gap-2 max-w-[200px]"><Icon name="Image" size={14} className="text-cyan-500" /><span className="truncate">{question.urlImagen}</span></div>}
+                    </div>
+                </div>
+            );
+        };
+
+        const QuestionModal = ({ isOpen, mode, question, onClose, onSave }) => {
+            const initialData = { id: '', tipo: 'quiz', pregunta: '', r1: '', r2: '', r3: '', r4: '', tiempo: '30', correcta: '1', urlImagen: '' };
+            const [formData, setFormData] = useState(initialData);
+
+            useEffect(() => {
+                if (isOpen) {
+                    setFormData(question && mode === 'edit' ? question : { ...initialData, id: generateId() });
+                }
+            }, [isOpen, mode, question]);
+
+            if (!isOpen) return null;
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                // Repair on manual save too
+                const repaired = { 
+                    ...formData, 
+                    pregunta: repairText(formData.pregunta), 
+                    r1: repairText(formData.r1), 
+                    r2: repairText(formData.r2), 
+                    r3: repairText(formData.r3), 
+                    r4: repairText(formData.r4) 
+                };
+                onSave(repaired);
+                onClose();
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in">
+                    <div className="bg-slate-900 border border-slate-800 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden">
+                        <div className="flex justify-between items-center p-6 border-b border-slate-800 glass">
+                            <h2 className="text-xl font-bold text-slate-100">{mode === 'create' ? 'Nueva Pregunta' : 'Editar Pregunta'}</h2>
+                            <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><Icon name="X" size={24} /></button>
+                        </div>
+                        <form onSubmit={handleSubmit} className="p-6 custom-scrollbar max-h-[75vh] overflow-y-auto space-y-6">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tipo</label>
+                                    <input type="text" value={formData.tipo} onChange={e => setFormData({...formData, tipo: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-slate-200 focus:border-cyan-500 outline-none transition-colors" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tiempo (seg)</label>
+                                    <input type="number" value={formData.tiempo} onChange={e => setFormData({...formData, tiempo: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-slate-200 focus:border-cyan-500 outline-none transition-colors" />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pregunta</label>
+                                <textarea rows={3} value={formData.pregunta} onChange={e => setFormData({...formData, pregunta: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-slate-200 focus:border-cyan-500 outline-none resize-none transition-colors" required />
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {[1, 2, 3, 4].map(num => (
+                                    <div key={num} className="space-y-1">
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex justify-between">R{num} {formData.correcta === String(num) && <span className="text-cyan-500">Correcta</span>}</label>
+                                        <input type="text" value={formData[`r${num}`]} onChange={e => setFormData({...formData, [`r${num}`]: e.target.value})} className={`w-full bg-slate-950 border rounded-2xl p-3 text-slate-200 outline-none transition-all ${formData.correcta === String(num) ? 'border-cyan-500 shadow-lg shadow-cyan-900/10' : 'border-slate-800'}`} required />
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Correcta</label>
+                                    <select value={formData.correcta} onChange={e => setFormData({...formData, correcta: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-slate-200 outline-none appearance-none transition-colors">
+                                        {[1, 2, 3, 4].map(n => <option key={n} value={String(n)}>Opción {n}</option>)}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">URL Imagen</label>
+                                    <input type="text" value={formData.urlImagen} onChange={e => setFormData({...formData, urlImagen: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-slate-200 outline-none transition-colors" placeholder="https://..." />
+                                </div>
+                            </div>
+                            <div className="flex gap-4 pt-4">
+                                <button type="button" onClick={onClose} className="flex-1 py-4 bg-slate-800 rounded-2xl font-bold text-slate-400 hover:bg-slate-700 transition-colors">Cancelar</button>
+                                <button type="submit" className="flex-1 py-4 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-2xl font-bold text-white shadow-lg shadow-cyan-900/20 flex items-center justify-center gap-2 hover:scale-[1.02] transition-transform active:scale-95"><Icon name="Save" size={20} /> Guardar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [questions, setQuestions] = useState([]);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [modalMode, setModalMode] = useState('create');
+            const [editingQuestion, setEditingQuestion] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const fileRef = useRef(null);
+
+            const filtered = useMemo(() => {
+                const query = searchQuery.toLowerCase();
+                return questions.filter(q => 
+                    q.pregunta.toLowerCase().includes(query) || 
+                    q.r1.toLowerCase().includes(query) ||
+                    q.r2.toLowerCase().includes(query) ||
+                    q.r3.toLowerCase().includes(query) ||
+                    q.r4.toLowerCase().includes(query)
+                );
+            }, [questions, searchQuery]);
+
+            const handleFile = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                setLoading(true);
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const parsed = parseCSV(ev.target.result);
+                    setQuestions(parsed);
+                    setLoading(false);
+                    e.target.value = ''; // Reset input
+                };
+                reader.onerror = () => {
+                    alert("Error al leer el archivo.");
+                    setLoading(false);
+                };
+                reader.readAsText(file);
+            };
+
+            const handleSave = (q) => {
+                if (modalMode === 'create') setQuestions([q, ...questions]);
+                else setQuestions(questions.map(item => item.id === q.id ? q : item));
+            };
+
+            const handleDelete = (id) => {
+                if (confirm('¿Eliminar esta pregunta?')) setQuestions(questions.filter(q => q.id !== id));
+            };
+
+            return (
+                <div className="min-h-screen pb-12 bg-slate-950 text-slate-200">
+                    <header className="glass border-b border-slate-800 sticky top-0 z-40 h-20 flex items-center justify-center">
+                        <div className="max-w-7xl w-full px-4 flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-900/40"><Icon name="FileText" size={20} className="text-white" /></div>
+                                <div><h1 className="text-xl font-black text-white leading-none tracking-tight">Repara</h1><p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mt-0.5">Edu-CSV Editor</p></div>
+                            </div>
+                            <div className="flex gap-2">
+                                <input type="file" ref={fileRef} accept=".csv" onChange={handleFile} id="file-upload" />
+                                <button onClick={() => fileRef.current.click()} className="px-4 py-2.5 rounded-xl bg-slate-900/50 hover:bg-slate-800 text-slate-300 font-semibold flex items-center gap-2 transition-all border border-slate-800"><Icon name="Upload" size={18} /> <span className="hidden sm:inline">Cargar CSV</span></button>
+                                <button onClick={() => downloadCSV(exportToCSV(questions), 'preguntas_reparadas.csv')} disabled={!questions.length} className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold flex items-center gap-2 transition-all shadow-lg shadow-cyan-900/20 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed active:scale-95"><Icon name="Download" size={18} /> <span className="hidden sm:inline">Exportar</span></button>
+                            </div>
+                        </div>
+                    </header>
+                    <main className="max-w-7xl mx-auto px-4 mt-8">
+                        <div className="flex flex-col md:flex-row gap-4 mb-10">
+                            <div className="relative flex-1 group">
+                                <Icon name="Search" size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-cyan-400 transition-colors" />
+                                <input type="text" placeholder="Filtrar preguntas..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full bg-slate-900/30 border border-slate-800 rounded-2xl py-4 pl-12 pr-6 focus:border-cyan-500/50 outline-none text-slate-200 transition-all placeholder:text-slate-600 shadow-inner" />
+                            </div>
+                            <button onClick={() => { setModalMode('create'); setIsModalOpen(true); }} className="px-8 py-4 rounded-2xl bg-slate-900/50 border border-slate-800 hover:border-cyan-500/30 text-slate-200 font-bold flex items-center justify-center gap-2 transition-all shadow-xl hover:text-white"><Icon name="Plus" size={20} /> Nueva Pregunta</button>
+                        </div>
+                        
+                        {questions.length === 0 ? (
+                            <div className="mt-24 text-center animate-in">
+                                <div className="w-24 h-24 bg-slate-900/50 border border-slate-800 rounded-full mx-auto flex items-center justify-center mb-6 shadow-2xl"><Icon name="LayoutGrid" size={32} className="text-slate-700" /></div>
+                                <h2 className="text-2xl font-bold text-slate-300">Empieza ahora</h2>
+                                <p className="text-slate-500 text-sm mt-2 max-w-sm mx-auto">Arrastra un archivo CSV o utiliza el botón de carga para gestionar tus preguntas educativas.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in">
+                                {filtered.length > 0 ? (
+                                    filtered.map(q => <QuestionCard key={q.id} question={q} onEdit={q => { setEditingQuestion(q); setModalMode('edit'); setIsModalOpen(true); }} onDelete={handleDelete} />)
+                                ) : (
+                                    <div className="col-span-full py-20 text-center">
+                                        <div className="inline-flex p-4 bg-slate-900/50 rounded-full mb-4 border border-slate-800"><Icon name="AlertCircle" size={32} className="text-slate-600" /></div>
+                                        <p className="text-slate-500 font-medium">No se encontraron resultados para la búsqueda.</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+
+                    <QuestionModal isOpen={isModalOpen} mode={modalMode} question={editingQuestion} onClose={() => setIsModalOpen(false)} onSave={handleSave} />
+                    
+                    {loading && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="w-12 h-12 border-4 border-cyan-500/20 border-t-cyan-500 rounded-full animate-spin"></div>
+                                <span className="text-cyan-500 font-black uppercase tracking-[0.2em] text-xs">Procesando CSV</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
