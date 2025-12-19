@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Repara-Edu-CSV</title>
+    <title>Repara - Edu-CSV</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💖</text></svg>">
     
     <!-- Tailwind CSS -->
@@ -123,20 +123,23 @@
             document.body.removeChild(link);
         };
 
+        const downloadExampleCSV = () => {
+            const content = "Tipo;Pregunta;R1;R2;R3;R4;Tiempo;Correcta;URL Imagen\n" +
+                          "quiz;¿Cuál es la capital de *Francia*?;París;Londres;Berlín;Madrid;30;1;https://images.unsplash.com/photo-1502602898657-3e91760cbb34\n" +
+                          "quiz;Resuelve la ecuación: 2x + 5 > 10;x > 2.5;x < 2.5;x = 2.5;x > 5;45;1;\n" +
+                          "quiz;El símbolo del #Hidrógeno# en la tabla periódica es...;H;He;Li;Be;20;1;";
+            downloadCSV(content, "ejemplo_repara.csv");
+        };
+
         // --- COMPONENTS ---
 
-        // Fixed Icon component for Lucide UMD compatibility
         const Icon = ({ name, size = 18, className = "" }) => {
             const ref = useRef(null);
 
             useEffect(() => {
                 if (ref.current && window.lucide) {
-                    // Normalize name to kebab-case for data-lucide attribute
                     const kebabName = name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
-                    
-                    // Create internal icon element
                     ref.current.innerHTML = `<i data-lucide="${kebabName}"></i>`;
-                    
                     window.lucide.createIcons({
                         root: ref.current,
                         attrs: {
@@ -207,7 +210,6 @@
 
             const handleSubmit = (e) => {
                 e.preventDefault();
-                // Repair on manual save too
                 const repaired = { 
                     ...formData, 
                     pregunta: repairText(formData.pregunta), 
@@ -301,7 +303,7 @@
                     const parsed = parseCSV(ev.target.result);
                     setQuestions(parsed);
                     setLoading(false);
-                    e.target.value = ''; // Reset input
+                    e.target.value = '';
                 };
                 reader.onerror = () => {
                     alert("Error al leer el archivo.");
@@ -329,6 +331,9 @@
                             </div>
                             <div className="flex gap-2">
                                 <input type="file" ref={fileRef} accept=".csv" onChange={handleFile} id="file-upload" />
+                                <button onClick={downloadExampleCSV} className="p-2.5 rounded-xl bg-slate-900/30 hover:bg-slate-800 text-slate-500 hover:text-cyan-400 transition-colors border border-slate-800" title="Descargar ejemplo">
+                                    <Icon name="FileQuestion" size={18} />
+                                </button>
                                 <button onClick={() => fileRef.current.click()} className="px-4 py-2.5 rounded-xl bg-slate-900/50 hover:bg-slate-800 text-slate-300 font-semibold flex items-center gap-2 transition-all border border-slate-800"><Icon name="Upload" size={18} /> <span className="hidden sm:inline">Cargar CSV</span></button>
                                 <button onClick={() => downloadCSV(exportToCSV(questions), 'preguntas_reparadas.csv')} disabled={!questions.length} className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold flex items-center gap-2 transition-all shadow-lg shadow-cyan-900/20 disabled:opacity-30 disabled:grayscale disabled:cursor-not-allowed active:scale-95"><Icon name="Download" size={18} /> <span className="hidden sm:inline">Exportar</span></button>
                             </div>
@@ -348,6 +353,10 @@
                                 <div className="w-24 h-24 bg-slate-900/50 border border-slate-800 rounded-full mx-auto flex items-center justify-center mb-6 shadow-2xl"><Icon name="LayoutGrid" size={32} className="text-slate-700" /></div>
                                 <h2 className="text-2xl font-bold text-slate-300">Empieza ahora</h2>
                                 <p className="text-slate-500 text-sm mt-2 max-w-sm mx-auto">Arrastra un archivo CSV o utiliza el botón de carga para gestionar tus preguntas educativas.</p>
+                                <button onClick={downloadExampleCSV} className="mt-6 text-cyan-500 hover:text-cyan-400 text-sm font-semibold underline underline-offset-4 decoration-cyan-900 flex items-center justify-center gap-2 mx-auto">
+                                    <Icon name="Download" size={14} />
+                                    Descargar CSV de ejemplo
+                                </button>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in">
